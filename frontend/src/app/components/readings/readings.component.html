@@ -1,0 +1,99 @@
+<section>
+  <div class="card">
+    <div class="readings-header">
+      <h2 class="section-title">Leituras Realizadas</h2>
+      <div class="search-bar">
+        <input
+          type="text"
+          placeholder="Buscar por placa…"
+          [(ngModel)]="searchQuery"
+          (keyup.enter)="search()"
+        >
+        <button class="btn-primary" (click)="search()">Buscar</button>
+        @if (searchQuery) {
+          <button class="btn-secondary" (click)="clearSearch()">Limpar</button>
+        }
+      </div>
+    </div>
+
+    @if (loading) {
+      <div class="loading-row">Carregando…</div>
+    } @else if (error) {
+      <div class="alert alert-error">{{ error }}</div>
+    } @else if (readings.length === 0) {
+      <div class="empty-state">
+        <span style="font-size:48px">📋</span>
+        <p>Nenhuma leitura encontrada.</p>
+      </div>
+    } @else {
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Placa</th>
+              <th>Confiança</th>
+              <th>Rostos</th>
+              <th>Arquivo</th>
+              <th>Status</th>
+              <th>Data/Hora</th>
+              <th>Imagem</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of readings; track r.id) {
+              <tr>
+                <td class="text-secondary">{{ r.id }}</td>
+                <td>
+                  @if (r.plate_text) {
+                    <span class="plate-text">{{ r.plate_text }}</span>
+                  } @else {
+                    <span class="text-secondary">—</span>
+                  }
+                </td>
+                <td>{{ confidencePercent(r.confidence) }}</td>
+                <td>{{ r.faces_detected }}</td>
+                <td class="filename">{{ r.original_filename }}</td>
+                <td>
+                  <span class="badge" [ngClass]="statusClass(r.status)">
+                    {{ statusLabel(r.status) }}
+                  </span>
+                </td>
+                <td class="text-secondary" style="white-space:nowrap">{{ formatDate(r.created_at) }}</td>
+                <td>
+                  @if (r.processed_image_path) {
+                    <button class="btn-icon" (click)="openImage(r.processed_image_path)" title="Ver imagem">
+                      🔍
+                    </button>
+                  } @else {
+                    <span class="text-secondary">—</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <span class="text-secondary">
+          {{ currentPage * pageSize + 1 }}–{{ Math.min((currentPage + 1) * pageSize, total) }} de {{ total }}
+        </span>
+        <div class="pagination-controls">
+          <button class="btn-secondary" (click)="prevPage()" [disabled]="currentPage === 0">‹ Anterior</button>
+          <span>{{ currentPage + 1 }} / {{ totalPages }}</span>
+          <button class="btn-secondary" (click)="nextPage()" [disabled]="(currentPage + 1) * pageSize >= total">Próxima ›</button>
+        </div>
+      </div>
+    }
+  </div>
+</section>
+
+@if (selectedImage) {
+  <div class="modal-backdrop" (click)="closeImage()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <button class="modal-close" (click)="closeImage()">✕</button>
+      <img [src]="selectedImage" alt="Imagem anonimizada" class="modal-image">
+    </div>
+  </div>
+}

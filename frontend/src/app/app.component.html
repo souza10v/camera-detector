@@ -1,0 +1,26 @@
+<header class="app-header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">🚗</span>
+      <div>
+        <h1>Camera Detector</h1>
+        <p>Leitura de placas com anonimização de rostos</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="app-main">
+  <div class="layout">
+    <div class="col-upload">
+      <app-upload (uploadComplete)="onUploadComplete()"></app-upload>
+    </div>
+    <div class="col-readings">
+      <app-readings [refreshTrigger]="refreshTrigger"></app-readings>
+    </div>
+  </div>
+</main>
+
+<footer class="app-footer">
+  <p>Camera Detector MVP — Imagens anonimizadas automaticamente. Rostos nunca armazenados.</p>
+</footer>

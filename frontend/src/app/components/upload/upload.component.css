@@ -1,0 +1,55 @@
+.upload-wrapper { display: flex; flex-direction: column; gap: 24px; }
+
+.section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: var(--text); }
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.drop-zone:hover, .drop-zone.dragging { border-color: var(--primary); background: #e8f0fe22; }
+.drop-zone.has-file { border-style: solid; border-color: var(--success); }
+
+.drop-prompt, .file-info { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.drop-icon { font-size: 40px; }
+
+.preview-container { margin-top: 16px; text-align: center; }
+.preview-image { max-height: 260px; max-width: 100%; border-radius: var(--radius); box-shadow: var(--shadow-md); }
+
+.actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+
+.loading-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 16px; }
+.loading-bar-inner {
+  height: 100%; width: 40%; background: var(--primary);
+  animation: slide 1.2s ease-in-out infinite;
+}
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+
+.alert { padding: 12px 16px; border-radius: var(--radius); margin-top: 16px; font-size: 14px; }
+.alert-error { background: #fce8e6; color: var(--danger); }
+
+.result-card { border-left: 4px solid var(--success); }
+
+.result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.result-item { display: flex; flex-direction: column; gap: 4px; }
+.result-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
+
+.plate-badge {
+  display: inline-block;
+  background: var(--text);
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  padding: 6px 16px;
+  border-radius: 4px;
+}
+
+.result-message { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
+
+.processed-image-container { margin-top: 8px; }
+.processed-image { max-width: 100%; max-height: 400px; border-radius: var(--radius); box-shadow: var(--shadow-md); }

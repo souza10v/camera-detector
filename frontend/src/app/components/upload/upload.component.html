@@ -1,0 +1,97 @@
+<section class="upload-wrapper">
+  <div class="card">
+    <h2 class="section-title">Enviar Imagem ou Vídeo</h2>
+
+    <div
+      class="drop-zone"
+      [class.dragging]="isDragging"
+      [class.has-file]="selectedFile"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave()"
+      (drop)="onDrop($event)"
+      (click)="fileInput.click()"
+    >
+      <input #fileInput type="file" accept="image/*,video/*" hidden (change)="onFileSelected($event)">
+
+      @if (!selectedFile) {
+        <div class="drop-prompt">
+          <span class="drop-icon">📷</span>
+          <p>Arraste um arquivo aqui ou <strong>clique para selecionar</strong></p>
+          <p class="text-secondary" style="font-size:12px;margin-top:4px">JPG, PNG, MP4, AVI — máx. 50 MB</p>
+        </div>
+      } @else {
+        <div class="file-info">
+          <span class="drop-icon">{{ selectedFile.type.startsWith('video') ? '🎥' : '🖼️' }}</span>
+          <strong>{{ selectedFile.name }}</strong>
+          <span class="text-secondary" style="font-size:12px">{{ (selectedFile.size / 1024 / 1024).toFixed(2) }} MB</span>
+        </div>
+      }
+    </div>
+
+    @if (preview) {
+      <div class="preview-container">
+        <img [src]="preview" alt="Pré-visualização" class="preview-image">
+      </div>
+    }
+
+    <div class="actions">
+      @if (selectedFile) {
+        <button class="btn-secondary" (click)="reset()" [disabled]="loading">Limpar</button>
+      }
+      <button class="btn-primary" (click)="submit()" [disabled]="!selectedFile || loading">
+        {{ loading ? 'Processando…' : 'Processar' }}
+      </button>
+    </div>
+
+    @if (loading) {
+      <div class="loading-bar">
+        <div class="loading-bar-inner"></div>
+      </div>
+    }
+
+    @if (error) {
+      <div class="alert alert-error">{{ error }}</div>
+    }
+  </div>
+
+  @if (result) {
+    <div class="card result-card">
+      <h3 class="section-title">Resultado</h3>
+
+      <div class="result-grid">
+        <div class="result-item">
+          <span class="result-label">Placa detectada</span>
+          @if (result.plate_text) {
+            <span class="plate-badge">{{ result.plate_text }}</span>
+          } @else {
+            <span class="text-secondary">Não identificada</span>
+          }
+        </div>
+
+        <div class="result-item">
+          <span class="result-label">Confiança</span>
+          <span>{{ confidencePercent(result.confidence) }}</span>
+        </div>
+
+        <div class="result-item">
+          <span class="result-label">Rostos anonimizados</span>
+          <span>{{ result.faces_detected }}</span>
+        </div>
+
+        <div class="result-item">
+          <span class="result-label">Placas encontradas</span>
+          <span>{{ result.plates_detected }}</span>
+        </div>
+      </div>
+
+      <p class="result-message">{{ result.message }}</p>
+
+      @if (result.processed_image_url) {
+        <div class="processed-image-container">
+          <p class="result-label" style="margin-bottom:8px">Imagem anonimizada:</p>
+          <img [src]="getImageUrl(result.processed_image_url)" alt="Imagem processada" class="processed-image">
+        </div>
+      }
+    </div>
+  }
+</section>

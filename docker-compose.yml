@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: camera_detector
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/camera_detector
+      UPLOAD_DIR: /app/uploads
+      PROCESSED_DIR: /app/uploads/processed
+      MAX_FILE_SIZE_MB: "50"
+      OCR_CONFIDENCE_THRESHOLD: "0.5"
+      FACE_BLUR_INTENSITY: "51"
+      YOLO_CONFIDENCE_THRESHOLD: "0.5"
+      CORS_ORIGINS: http://localhost:4200,http://localhost:80,http://frontend
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads_data:
