@@ -1,0 +1,90 @@
+<section class="camera-wrapper">
+  <div class="card">
+    <h2 class="section-title">Câmera ao Vivo</h2>
+
+    <div class="mode-tabs">
+      <button
+        [class.active]="mode === 'webcam'"
+        (click)="setMode('webcam')"
+        [disabled]="status === 'streaming' || status === 'connecting'">
+        Webcam
+      </button>
+      <button
+        [class.active]="mode === 'rtsp'"
+        (click)="setMode('rtsp')"
+        [disabled]="status === 'streaming' || status === 'connecting'">
+        Câmera IP / RTSP
+      </button>
+    </div>
+
+    @if (mode === 'rtsp') {
+      <div class="rtsp-input">
+        <input
+          type="text"
+          placeholder="rtsp://usuario:senha@192.168.1.100:554/stream"
+          [(ngModel)]="rtspUrl"
+          [disabled]="status !== 'idle' && status !== 'error'"
+          style="width:100%">
+      </div>
+    }
+
+    <div class="controls">
+      @if (status === 'idle' || status === 'error') {
+        <button class="btn-primary" (click)="start()">Iniciar</button>
+      } @else {
+        <button class="btn-danger" (click)="stop()">Parar</button>
+      }
+      <span class="status-badge" [ngClass]="'status-' + status">
+        {{ {idle: 'Inativo', connecting: 'Conectando…', streaming: 'Transmitindo', error: 'Erro'}[status] }}
+      </span>
+    </div>
+
+    @if (status === 'error' && errorMessage) {
+      <div class="alert-error">{{ errorMessage }}</div>
+    }
+  </div>
+
+  <div class="video-section">
+    <div class="video-container" [class.active]="status === 'streaming'">
+
+      <video #videoEl autoplay muted playsinline style="display:none"></video>
+      <canvas #canvasEl style="display:none"></canvas>
+
+      @if (currentFrame) {
+        <img [src]="currentFrame" class="live-frame" alt="Frame ao vivo">
+      } @else {
+        <div class="placeholder">
+          <p>{{ status === 'connecting' ? 'Aguardando stream…' : 'Clique em Iniciar para começar' }}</p>
+        </div>
+      }
+
+      @if (lastResult?.plate_text) {
+        <div class="plate-overlay">
+          <span class="plate-chip">{{ lastResult!.plate_text }}</span>
+          <span class="conf-chip">{{ confidencePercent(lastResult!.confidence) }}</span>
+        </div>
+      }
+    </div>
+
+    @if (lastResult) {
+      <div class="stats-bar">
+        <div class="stat">
+          <span class="stat-label">Placa</span>
+          <span class="stat-value plate-font">{{ lastResult.plate_text ?? '—' }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Confiança</span>
+          <span class="stat-value">{{ confidencePercent(lastResult.confidence) }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Placas detectadas</span>
+          <span class="stat-value">{{ lastResult.plates_detected }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Rostos anonimizados</span>
+          <span class="stat-value">{{ lastResult.faces_detected }}</span>
+        </div>
+      </div>
+    }
+  </div>
+</section>

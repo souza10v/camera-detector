@@ -1,24 +1,45 @@
 <header class="app-header">
   <div class="header-inner">
     <div class="logo">
-      <span class="logo-icon">🚗</span>
       <div>
         <h1>Camera Detector</h1>
         <p>Leitura de placas com anonimização de rostos</p>
       </div>
     </div>
+
+    <nav class="nav-tabs">
+      <button [class.active]="activeTab === 'upload'" (click)="setTab('upload')">
+        Upload
+      </button>
+      <button [class.active]="activeTab === 'camera'" (click)="setTab('camera')">
+        Câmera ao Vivo
+      </button>
+      <button [class.active]="activeTab === 'readings'" (click)="setTab('readings')">
+        Leituras
+      </button>
+    </nav>
   </div>
 </header>
 
 <main class="app-main">
-  <div class="layout">
-    <div class="col-upload">
-      <app-upload (uploadComplete)="onUploadComplete()"></app-upload>
+  @if (activeTab === 'upload') {
+    <div class="layout-split">
+      <div class="col-upload">
+        <app-upload (uploadComplete)="onUploadComplete()"></app-upload>
+      </div>
+      <div class="col-readings">
+        <app-readings [refreshTrigger]="refreshTrigger"></app-readings>
+      </div>
     </div>
-    <div class="col-readings">
-      <app-readings [refreshTrigger]="refreshTrigger"></app-readings>
-    </div>
-  </div>
+  }
+
+  @if (activeTab === 'camera') {
+    <app-camera></app-camera>
+  }
+
+  @if (activeTab === 'readings') {
+    <app-readings [refreshTrigger]="refreshTrigger"></app-readings>
+  }
 </main>
 
 <footer class="app-footer">

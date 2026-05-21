@@ -15,13 +15,11 @@
 
       @if (!selectedFile) {
         <div class="drop-prompt">
-          <span class="drop-icon">📷</span>
           <p>Arraste um arquivo aqui ou <strong>clique para selecionar</strong></p>
           <p class="text-secondary" style="font-size:12px;margin-top:4px">JPG, PNG, MP4, AVI — máx. 50 MB</p>
         </div>
       } @else {
         <div class="file-info">
-          <span class="drop-icon">{{ selectedFile.type.startsWith('video') ? '🎥' : '🖼️' }}</span>
           <strong>{{ selectedFile.name }}</strong>
           <span class="text-secondary" style="font-size:12px">{{ (selectedFile.size / 1024 / 1024).toFixed(2) }} MB</span>
         </div>

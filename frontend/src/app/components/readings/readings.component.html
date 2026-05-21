@@ -22,7 +22,6 @@
       <div class="alert alert-error">{{ error }}</div>
     } @else if (readings.length === 0) {
       <div class="empty-state">
-        <span style="font-size:48px">📋</span>
         <p>Nenhuma leitura encontrada.</p>
       </div>
     } @else {
@@ -63,7 +62,7 @@
                 <td>
                   @if (r.processed_image_path) {
                     <button class="btn-icon" (click)="openImage(r.processed_image_path)" title="Ver imagem">
-                      🔍
+                      Ver
                     </button>
                   } @else {
                     <span class="text-secondary">—</span>
@@ -92,7 +91,7 @@
 @if (selectedImage) {
   <div class="modal-backdrop" (click)="closeImage()">
     <div class="modal-content" (click)="$event.stopPropagation()">
-      <button class="modal-close" (click)="closeImage()">✕</button>
+      <button class="modal-close" (click)="closeImage()">Fechar</button>
       <img [src]="selectedImage" alt="Imagem anonimizada" class="modal-image">
     </div>
   </div>

@@ -14,7 +14,6 @@
 .drop-zone.has-file { border-style: solid; border-color: var(--success); }
 
 .drop-prompt, .file-info { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.drop-icon { font-size: 40px; }
 
 .preview-container { margin-top: 16px; text-align: center; }
 .preview-image { max-height: 260px; max-width: 100%; border-radius: var(--radius); box-shadow: var(--shadow-md); }
