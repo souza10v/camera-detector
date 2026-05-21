@@ -10,8 +10,8 @@ class PlateReadingBase(BaseModel):
     original_filename: str
     file_type: str
     status: ProcessingStatus
-    faces_detected: int = 0
     plates_detected: int = 0
+    faces_detected: int = 0
 
 
 class PlateReadingCreate(PlateReadingBase):
@@ -38,8 +38,8 @@ class ProcessingResult(BaseModel):
     reading_id: int
     plate_text: Optional[str]
     confidence: Optional[float]
-    faces_detected: int
     plates_detected: int
+    faces_detected: int
     processed_image_url: Optional[str]
     status: ProcessingStatus
     message: str

@@ -47,12 +47,29 @@
   <div class="video-section">
     <div class="video-container" [class.active]="status === 'streaming'">
 
-      <video #videoEl autoplay muted playsinline style="display:none"></video>
-      <canvas #canvasEl style="display:none"></canvas>
-
-      @if (currentFrame) {
-        <img [src]="currentFrame" class="live-frame" alt="Frame ao vivo">
+      @if (mode === 'webcam') {
+        <!-- Native video — zero latency, browser renders directly -->
+        <video #videoEl autoplay muted playsinline class="live-video"
+          [style.display]="status === 'streaming' ? 'block' : 'none'">
+        </video>
+        <!-- Annotation overlay drawn by canvas API -->
+        <canvas #overlayEl class="overlay-canvas"
+          [style.display]="status === 'streaming' ? 'block' : 'none'">
+        </canvas>
+        <!-- Hidden capture canvas — used only to grab frames to send to backend -->
+        <canvas #captureEl style="display:none"></canvas>
       } @else {
+        <!-- RTSP: frame comes from backend as JPEG -->
+        <canvas #overlayEl style="display:none"></canvas>
+        <canvas #captureEl style="display:none"></canvas>
+        <video #videoEl style="display:none"></video>
+      }
+
+      @if (mode === 'rtsp' && currentRtspFrame) {
+        <img [src]="currentRtspFrame" class="live-frame" alt="Frame ao vivo">
+      }
+
+      @if (status !== 'streaming') {
         <div class="placeholder">
           <p>{{ status === 'connecting' ? 'Aguardando stream…' : 'Clique em Iniciar para começar' }}</p>
         </div>
@@ -81,8 +98,12 @@
           <span class="stat-value">{{ lastResult.plates_detected }}</span>
         </div>
         <div class="stat">
-          <span class="stat-label">Rostos anonimizados</span>
-          <span class="stat-value">{{ lastResult.faces_detected }}</span>
+          <span class="stat-label">Rostos detectados</span>
+          <span class="stat-value">{{ lastResult.faces.length }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Identificados</span>
+          <span class="stat-value">{{ countIdentified(lastResult.faces) }}</span>
         </div>
       </div>
     }

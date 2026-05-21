@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
@@ -19,7 +20,27 @@ async def get_db():
             await session.close()
 
 
+# Lightweight column migrations — ADD COLUMN IF NOT EXISTS is idempotent
+_MIGRATIONS = [
+    """
+    ALTER TABLE face_detections
+        ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'upload'
+    """,
+    """
+    ALTER TABLE face_detections
+        ALTER COLUMN reading_id DROP NOT NULL
+    """,
+]
+
+
 async def create_tables():
     async with engine.begin() as conn:
-        from app.models import reading  # noqa: F401
+        from app.models import reading, face  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
+
+        # Apply incremental column migrations on existing tables
+        for migration in _MIGRATIONS:
+            try:
+                await conn.execute(text(migration))
+            except Exception:
+                pass  # column/constraint already in desired state

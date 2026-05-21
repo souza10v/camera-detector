@@ -32,7 +32,6 @@
               <th>#</th>
               <th>Placa</th>
               <th>Confiança</th>
-              <th>Rostos</th>
               <th>Arquivo</th>
               <th>Status</th>
               <th>Data/Hora</th>
@@ -51,7 +50,6 @@
                   }
                 </td>
                 <td>{{ confidencePercent(r.confidence) }}</td>
-                <td>{{ r.faces_detected }}</td>
                 <td class="filename">{{ r.original_filename }}</td>
                 <td>
                   <span class="badge" [ngClass]="statusClass(r.status)">

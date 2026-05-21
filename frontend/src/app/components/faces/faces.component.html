@@ -1,0 +1,102 @@
+<section>
+  <div class="card">
+    <div class="header-row">
+      <h2 class="section-title">Rostos Únicos Detectados</h2>
+      <span class="total-badge">{{ total }} pessoa{{ total !== 1 ? 's' : '' }}</span>
+    </div>
+
+    @if (loading) {
+      <div class="state-msg">Carregando…</div>
+    } @else if (error) {
+      <div class="alert-error">{{ error }}</div>
+    } @else if (faces.length === 0) {
+      <div class="state-msg">Nenhum rosto identificado ainda. Faça upload de uma imagem com pessoas.</div>
+    } @else {
+      <div class="faces-grid">
+        @for (face of faces; track face.id) {
+          <div class="face-card" (click)="openDetail(face)">
+            <div class="face-img-wrap">
+              @if (face.representative_image_path) {
+                <img [src]="faceImageUrl(face.representative_image_path)" alt="Rosto {{ face.id }}" class="face-img">
+              } @else {
+                <div class="face-placeholder">?</div>
+              }
+            </div>
+            <div class="face-info">
+              <span class="face-id">Pessoa #{{ face.id }}</span>
+              <span class="face-count">{{ face.appearance_count }} aparição{{ face.appearance_count !== 1 ? 'ões' : '' }}</span>
+              <span class="face-date">{{ formatDate(face.last_seen_at) }}</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="pagination">
+        <span class="text-secondary">
+          {{ currentPage * pageSize + 1 }}–{{ Math.min((currentPage + 1) * pageSize, total) }} de {{ total }}
+        </span>
+        <div class="pagination-controls">
+          <button class="btn-secondary" (click)="prevPage()" [disabled]="currentPage === 0">Anterior</button>
+          <span>{{ currentPage + 1 }} / {{ totalPages }}</span>
+          <button class="btn-secondary" (click)="nextPage()" [disabled]="(currentPage + 1) * pageSize >= total">Próxima</button>
+        </div>
+      </div>
+    }
+  </div>
+</section>
+
+@if (selected || loadingDetail) {
+  <div class="modal-backdrop" (click)="closeDetail()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Pessoa #{{ selected?.id }}</h3>
+        <button class="btn-secondary" (click)="closeDetail()">Fechar</button>
+      </div>
+
+      @if (loadingDetail) {
+        <div class="state-msg">Carregando…</div>
+      } @else if (selected) {
+        <div class="detail-body">
+          <div class="detail-main">
+            @if (selected.representative_image_path) {
+              <img [src]="faceImageUrl(selected.representative_image_path)" alt="Rosto" class="detail-img">
+            } @else {
+              <div class="face-placeholder large">?</div>
+            }
+            <div class="detail-stats">
+              <div class="stat-row">
+                <span class="stat-label">Aparições</span>
+                <strong>{{ selected.appearance_count }}</strong>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Primeira vez</span>
+                <span>{{ formatDate(selected.first_seen_at) }}</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Última vez</span>
+                <span>{{ formatDate(selected.last_seen_at) }}</span>
+              </div>
+            </div>
+          </div>
+
+          @if (selected.detections.length > 0) {
+            <h4 class="detections-title">Capturas</h4>
+            <div class="detections-grid">
+              @for (det of selected.detections; track det.id) {
+                <div class="detection-item">
+                  @if (det.face_image_path) {
+                    <img [src]="faceImageUrl(det.face_image_path)" alt="Captura" class="det-img">
+                  }
+                  <div class="det-meta">
+                    <span>Leitura #{{ det.reading_id }}</span>
+                    <span class="text-secondary">{{ formatDate(det.created_at) }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+}

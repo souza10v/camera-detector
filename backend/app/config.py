@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     allowed_image_types: str = "image/jpeg,image/png,image/webp"
     allowed_video_types: str = "video/mp4,video/avi,video/mov"
     ocr_confidence_threshold: float = 0.5
-    face_blur_intensity: int = 51
+    face_recognition_threshold: float = 0.55
     yolo_confidence_threshold: float = 0.5
     cors_origins: str = "http://localhost:4200"
 
