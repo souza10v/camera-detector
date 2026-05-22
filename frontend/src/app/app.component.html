@@ -18,6 +18,8 @@
 </header>
 
 <main class="app-main">
+
+  <!-- Upload — recriado ao entrar (não precisa persistir) -->
   @if (activeTab === 'upload') {
     <div class="layout-split">
       <div class="col-upload">
@@ -29,12 +31,14 @@
     </div>
   }
 
-  @if (activeTab === 'cameras') {
+  <!-- Câmeras — SEMPRE montado, só ocultado com display:none para preservar estado -->
+  <div [style.display]="activeTab === 'cameras' ? '' : 'none'">
     <app-camera-list (viewCamera)="onViewCamera($event)"></app-camera-list>
-  }
+  </div>
 
-  @if (activeTab === 'stream') {
-    @if (selectedCameraUrl) {
+  <!-- Ao Vivo — SEMPRE montado para manter WebSockets ativos -->
+  <div [style.display]="activeTab === 'stream' ? '' : 'none'">
+    @if (selectedCameraUrl && activeTab === 'stream') {
       <div class="stream-from-registry">
         <div class="stream-banner">
           Visualizando: <strong>{{ selectedCameraLabel }}</strong>
@@ -43,8 +47,9 @@
       </div>
     }
     <app-camera [presetRtspUrl]="selectedCameraUrl" [presetRtspLabel]="selectedCameraLabel"></app-camera>
-  }
+  </div>
 
+  <!-- Leituras e Rostos — recarregam ao entrar (dados do banco, sem estado local) -->
   @if (activeTab === 'readings') {
     <app-readings [refreshTrigger]="refreshTrigger"></app-readings>
   }
@@ -52,6 +57,7 @@
   @if (activeTab === 'faces') {
     <app-faces [refreshTrigger]="refreshTrigger"></app-faces>
   }
+
 </main>
 
 <footer class="app-footer">

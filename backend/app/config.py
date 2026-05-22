@@ -4,6 +4,13 @@ from typing import List
 
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/camera_detector"
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
+
+    @property
+    def database_sync_url(self) -> str:
+        """URL síncrona para uso no worker Celery (psycopg2 em vez de asyncpg)."""
+        return self.database_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
     upload_dir: str = "/app/uploads"
     processed_dir: str = "/app/uploads/processed"
     max_file_size_mb: int = 50

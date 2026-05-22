@@ -8,58 +8,98 @@
     @if (loading) {
       <p class="hint">Carregando…</p>
     } @else if (cameras.length === 0) {
-      <p class="hint">Nenhuma câmera cadastrada. Clique em "Nova câmera" para adicionar.</p>
+      <p class="hint">Nenhuma câmera cadastrada. Clique em "+ Nova câmera" para adicionar.</p>
     } @else {
-      <table class="cam-table">
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Nome</th>
-            <th>URL</th>
-            <th>Descrição</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (cam of cameras; track cam.id) {
-            <tr [class.disabled-row]="!cam.enabled">
-              <td>
-                @if (cam.pinging) {
-                  <span class="badge badge-checking">Verificando…</span>
-                } @else if (cam.online === true) {
-                  <span class="badge badge-online">Online</span>
-                } @else if (cam.online === false) {
-                  <span class="badge badge-offline">Offline</span>
-                } @else {
-                  <span class="badge badge-unknown">—</span>
-                }
-              </td>
-              <td class="td-name">{{ cam.name }}</td>
-              <td class="td-url">
-                <span class="url-text" [title]="cam.url">{{ cam.url }}</span>
-              </td>
-              <td class="td-desc">{{ cam.description ?? '—' }}</td>
-              <td class="td-actions">
-                <button class="btn-action btn-view"
-                  [disabled]="cam.online !== true"
-                  [title]="cam.online !== true ? 'Câmera offline' : 'Ver stream'"
-                  (click)="view(cam)">
-                  Ver
-                </button>
-                <button class="btn-action btn-ping" (click)="ping(cam)" title="Verificar status">
-                  Ping
-                </button>
-                <button class="btn-action btn-edit" (click)="openForm(cam)">Editar</button>
-                <button class="btn-action btn-del"  (click)="delete(cam)">Excluir</button>
-              </td>
+      <div class="table-wrap">
+        <table class="cam-table">
+          <thead>
+            <tr>
+              <th>Rede</th>
+              <th>Worker</th>
+              <th>Nome</th>
+              <th>URL</th>
+              <th>Descrição</th>
+              <th>Ações</th>
             </tr>
-          }
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @for (cam of cameras; track cam.id) {
+              <tr [class.disabled-row]="!cam.enabled">
+                <!-- Status de rede -->
+                <td>
+                  @if (cam.pinging) {
+                    <span class="badge badge-checking">…</span>
+                  } @else if (cam.online === true) {
+                    <span class="badge badge-online">Online</span>
+                  } @else if (cam.online === false) {
+                    <span class="badge badge-offline">Offline</span>
+                  } @else {
+                    <span class="badge badge-unknown">—</span>
+                  }
+                </td>
+
+                <!-- Status do worker -->
+                <td>
+                  <span class="badge"
+                    [class.badge-worker-running]="cam.workerStatus === 'running'"
+                    [class.badge-worker-starting]="cam.workerStatus === 'starting'"
+                    [class.badge-worker-stopped]="cam.workerStatus === 'stopped'"
+                    [class.badge-unknown]="cam.workerStatus === 'unknown'">
+                    {{ workerLabel(cam.workerStatus) }}
+                  </span>
+                </td>
+
+                <td class="td-name">{{ cam.name }}</td>
+
+                <td class="td-url">
+                  <span class="url-text" [title]="cam.url">{{ cam.url }}</span>
+                </td>
+
+                <td class="td-desc">{{ cam.description ?? '—' }}</td>
+
+                <td class="td-actions">
+                  <!-- Controle do worker -->
+                  @if (cam.workerStatus === 'running' || cam.workerStatus === 'starting') {
+                    <button class="btn-action btn-stop-worker" (click)="stopWorker(cam)" title="Parar processamento">
+                      Parar
+                    </button>
+                  } @else {
+                    <button class="btn-action btn-start-worker"
+                      [disabled]="cam.online !== true || !cam.enabled"
+                      [title]="cam.online !== true ? 'Câmera offline' : 'Iniciar processamento automático'"
+                      (click)="startWorker(cam)">
+                      Processar
+                    </button>
+                  }
+
+                  <!-- Ver stream ao vivo -->
+                  <button class="btn-action btn-view"
+                    [disabled]="cam.online !== true"
+                    [title]="cam.online !== true ? 'Câmera offline' : 'Ver stream ao vivo'"
+                    (click)="view(cam)">
+                    Ver
+                  </button>
+
+                  <button class="btn-action btn-ping" (click)="ping(cam)" title="Testar conectividade">
+                    Ping
+                  </button>
+                  <button class="btn-action btn-edit" (click)="openForm(cam)">Editar</button>
+                  <button class="btn-action btn-del"  (click)="delete(cam)">Excluir</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <p class="legend">
+        <strong>Processar</strong> — roda OCR + reconhecimento facial 24/7 em background, sem precisar abrir o browser.
+        <strong>Ver</strong> — abre o stream ao vivo na aba "Ao Vivo".
+      </p>
     }
   </div>
 
-  <!-- Modal de cadastro / edição -->
+  <!-- Modal cadastro / edição -->
   @if (showForm) {
     <div class="modal-backdrop" (click)="closeForm()">
       <div class="modal-box" (click)="$event.stopPropagation()">
@@ -72,16 +112,17 @@
         <input type="text" [(ngModel)]="form.url" placeholder="rtsp://usuario:senha@192.168.1.100:554/stream">
 
         <label>Descrição</label>
-        <input type="text" [(ngModel)]="form.description" placeholder="Opcional">
+        <input type="text" [(ngModel)]="form.description" placeholder="Localização, modelo…">
 
         <label class="checkbox-label">
           <input type="checkbox" [(ngModel)]="form.enabled">
-          Câmera ativa
+          Câmera ativa (inicia processamento automaticamente)
         </label>
 
         <div class="modal-actions">
           <button class="btn-secondary" (click)="closeForm()">Cancelar</button>
-          <button class="btn-primary" (click)="save()" [disabled]="saving || !form.name.trim() || !form.url.trim()">
+          <button class="btn-primary" (click)="save()"
+            [disabled]="saving || !form.name.trim() || !form.url.trim()">
             {{ saving ? 'Salvando…' : 'Salvar' }}
           </button>
         </div>

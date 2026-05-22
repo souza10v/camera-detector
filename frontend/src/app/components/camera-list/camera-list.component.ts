@@ -9,9 +9,10 @@ export interface CameraEntry {
   url: string;
   description: string | null;
   enabled: boolean;
-  // estado local (não vem do backend)
-  online?: boolean | null;   // null = não verificado, true/false = resultado do ping
+  // estado local
+  online?: boolean | null;
   pinging?: boolean;
+  workerStatus?: 'running' | 'starting' | 'stopped' | 'unknown';
 }
 
 @Component({
@@ -32,34 +33,37 @@ export class CameraListComponent implements OnInit, OnDestroy {
   form = { name: '', url: '', description: '', enabled: true };
   saving = false;
 
-  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(private http: HttpClient) {}
 
   ngOnInit(): void {
     this.load();
-    // Verifica status de todas as câmeras a cada 30s
-    this.pingInterval = setInterval(() => this.pingAll(), 30_000);
+    // Atualiza status a cada 20s
+    this.pollInterval = setInterval(() => this.refreshStatus(), 20_000);
   }
 
   ngOnDestroy(): void {
-    if (this.pingInterval) clearInterval(this.pingInterval);
+    if (this.pollInterval) clearInterval(this.pollInterval);
   }
 
   load(): void {
     this.loading = true;
     this.http.get<CameraEntry[]>('/api/v1/cameras/').subscribe({
       next: (cams: any[]) => {
-        this.cameras = cams.map(c => ({ ...c, online: null, pinging: false }));
+        this.cameras = cams.map(c => ({ ...c, online: null, pinging: false, workerStatus: 'unknown' }));
         this.loading = false;
-        this.pingAll();
+        this.refreshStatus();
       },
       error: () => { this.loading = false; },
     });
   }
 
-  pingAll(): void {
-    this.cameras.forEach(c => this.ping(c));
+  refreshStatus(): void {
+    this.cameras.forEach(c => {
+      this.ping(c);
+      this.fetchWorkerStatus(c);
+    });
   }
 
   ping(cam: CameraEntry): void {
@@ -68,6 +72,30 @@ export class CameraListComponent implements OnInit, OnDestroy {
       next: r => { cam.online = r.online; cam.pinging = false; },
       error: ()  => { cam.online = false;  cam.pinging = false; },
     });
+  }
+
+  fetchWorkerStatus(cam: CameraEntry): void {
+    this.http.get<{ status: string }>(`/api/v1/cameras/${cam.id}/worker-status`).subscribe({
+      next: r => { cam.workerStatus = r.status as any; },
+      error: ()  => { cam.workerStatus = 'unknown'; },
+    });
+  }
+
+  startWorker(cam: CameraEntry): void {
+    cam.workerStatus = 'starting';
+    this.http.post<any>(`/api/v1/cameras/${cam.id}/start`, {}).subscribe({
+      next: () => { setTimeout(() => this.fetchWorkerStatus(cam), 2000); },
+      error: (err) => {
+        cam.workerStatus = 'stopped';
+        const msg = err?.error?.detail ?? 'Erro ao iniciar processamento.';
+        alert(msg);
+      },
+    });
+  }
+
+  stopWorker(cam: CameraEntry): void {
+    cam.workerStatus = 'stopped';
+    this.http.post(`/api/v1/cameras/${cam.id}/stop`, {}).subscribe();
   }
 
   openForm(cam?: CameraEntry): void {
@@ -87,14 +115,16 @@ export class CameraListComponent implements OnInit, OnDestroy {
     if (!this.form.name.trim() || !this.form.url.trim()) return;
     this.saving = true;
     const body = { ...this.form };
-
     const req = this.editingId
       ? this.http.put<CameraEntry>(`/api/v1/cameras/${this.editingId}`, body)
       : this.http.post<CameraEntry>('/api/v1/cameras/', body);
-
     req.subscribe({
       next: () => { this.saving = false; this.showForm = false; this.load(); },
-      error: ()  => { this.saving = false; },
+      error: (err) => {
+        this.saving = false;
+        const msg = err?.error?.detail ?? 'Erro ao salvar câmera.';
+        alert(msg);
+      },
     });
   }
 
@@ -105,5 +135,9 @@ export class CameraListComponent implements OnInit, OnDestroy {
 
   view(cam: CameraEntry): void {
     this.viewCamera.emit(cam);
+  }
+
+  workerLabel(s: string | undefined): string {
+    return ({ running: 'Processando', starting: 'Iniciando…', stopped: 'Parado', unknown: '—' } as any)[s ?? 'unknown'] ?? '—';
   }
 }

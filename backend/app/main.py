@@ -25,6 +25,21 @@ async def lifespan(app: FastAPI):
 
     ensure_dirs()
     await create_tables()
+
+    # Auto-start workers para todas as câmeras habilitadas
+    from sqlalchemy import select
+    from app.database.connection import AsyncSessionLocal
+    from app.models.camera import Camera
+    from app.routes.cameras import start_camera_worker
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Camera).where(Camera.enabled == True))  # noqa: E712
+        for cam in result.scalars().all():
+            try:
+                start_camera_worker(cam.id)
+                logging.getLogger(__name__).info("Auto-started worker for camera %d (%s)", cam.id, cam.name)
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Failed to start worker for camera %d: %s", cam.id, exc)
+
     yield
 
     executor.shutdown(wait=False)

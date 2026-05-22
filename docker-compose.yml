@@ -14,28 +14,65 @@ services:
       retries: 5
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/camera_detector
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
       UPLOAD_DIR: /app/uploads
       PROCESSED_DIR: /app/uploads/processed
       MAX_FILE_SIZE_MB: "50"
       OCR_CONFIDENCE_THRESHOLD: "0.5"
-      FACE_BLUR_INTENSITY: "51"
       YOLO_CONFIDENCE_THRESHOLD: "0.5"
       CORS_ORIGINS: http://localhost:4200,http://localhost:80,http://frontend
     volumes:
       - uploads_data:/app/uploads
+      - model_cache:/root/.EasyOCR    # modelos EasyOCR persistidos
     ports:
       - "8000:8000"
-    # Allow the container to reach RTSP cameras on the host LAN
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=4 -E
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/camera_detector
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      UPLOAD_DIR: /app/uploads
+      PROCESSED_DIR: /app/uploads/processed
+      OCR_CONFIDENCE_THRESHOLD: "0.5"
+      FACE_RECOGNITION_THRESHOLD: "0.55"
+    volumes:
+      - uploads_data:/app/uploads
+      - model_cache:/root/.EasyOCR    # compartilha cache de modelos com a API
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -52,3 +89,4 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  model_cache:     # modelos EasyOCR — evita re-download a cada rebuild
