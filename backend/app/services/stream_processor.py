@@ -1,11 +1,14 @@
 import cv2
 import numpy as np
 import base64
+import logging
 from app.services.plate_detector import plate_detector
 from app.services.face_recognition_service import (
     detect_and_encode_faces, find_best_match, save_face_crop_stream
 )
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def decode_frame(b64: str) -> np.ndarray:
@@ -106,17 +109,119 @@ class RTSPStreamer:
         self.ocr_interval = ocr_interval
         self.face_interval = face_interval
         self._cap: cv2.VideoCapture | None = None
+        self._consecutive_failures = 0
 
-    def open(self) -> bool:
-        self._cap = cv2.VideoCapture(self.url)
-        return self._cap.isOpened()
+    @staticmethod
+    def _check_tcp(host: str, port: int, timeout: float = 5.0) -> bool:
+        """Quick TCP probe — fails fast if the camera is unreachable."""
+        import socket
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _parse_host_port(url: str) -> tuple[str, int] | None:
+        """Extract host and port from an rtsp:// URL."""
+        import re
+        m = re.match(r"rtsp://(?:[^@]+@)?([^:/]+)(?::(\d+))?", url)
+        if not m:
+            return None
+        host = m.group(1)
+        port = int(m.group(2)) if m.group(2) else 554
+        return host, port
+
+    def open(self) -> tuple[bool, str]:
+        """Open RTSP stream. Forces FFMPEG backend with TCP transport.
+        Returns (success, error_message)."""
+        import os
+        logger.info("RTSPStreamer: opening %s", self.url)
+
+        # Pre-flight TCP probe — gives a fast, clear error if camera is unreachable
+        parsed = self._parse_host_port(self.url)
+        if parsed:
+            host, port = parsed
+            logger.info("RTSPStreamer: TCP probe %s:%d …", host, port)
+            if not self._check_tcp(host, port):
+                err = (
+                    f"Não foi possível conectar ao host {host}:{port}. "
+                    "Verifique se a câmera está ligada e acessível na rede."
+                )
+                logger.error("RTSPStreamer: TCP probe failed — %s", err)
+                return False, err
+            logger.info("RTSPStreamer: TCP probe OK")
+
+        # Force TCP transport + fast socket timeout (stimeout = microseconds)
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+
+        logger.info("RTSPStreamer: trying CAP_FFMPEG backend…")
+        self._cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+
+        if not self._cap.isOpened():
+            logger.warning("RTSPStreamer: CAP_FFMPEG failed, trying default backend…")
+            self._cap.release()
+            self._cap = cv2.VideoCapture(self.url)
+
+        if not self._cap.isOpened():
+            err = f"Não foi possível abrir o stream RTSP. Verifique a URL e as credenciais: {self.url}"
+            logger.error("RTSPStreamer: %s", err)
+            return False, err
+
+        # Reduce internal buffer to 1 frame — avoids accumulating stale frames
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        # Log resolution reported by the stream headers
+        w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = self._cap.get(cv2.CAP_PROP_FPS)
+        logger.info("RTSPStreamer: stream headers  %dx%d @ %.1f fps", w, h, fps)
+
+        # Warmup: many cameras take 1-3 s before sending the first I-frame.
+        # Try reading for up to 5 s before declaring success (or failure).
+        import time as _time
+        deadline = _time.monotonic() + 5.0
+        warmup_ok = False
+        while _time.monotonic() < deadline:
+            ret, frame = self._cap.read()
+            if ret and frame is not None:
+                warmup_ok = True
+                logger.info("RTSPStreamer: first frame received  shape=%s", frame.shape)
+                break
+            logger.debug("RTSPStreamer: warmup read failed, retrying…")
+            _time.sleep(0.1)
+
+        if not warmup_ok:
+            self._cap.release()
+            self._cap = None
+            err = (
+                "Stream aberto mas nenhum frame recebido em 5 s. "
+                "Verifique o caminho RTSP, codec e credenciais."
+            )
+            logger.error("RTSPStreamer: %s", err)
+            return False, err
+
+        return True, ""
 
     def read_and_process(self, frame_number: int, face_cache: list[dict]) -> dict | None:
         if self._cap is None or not self._cap.isOpened():
+            logger.error("RTSPStreamer: capture is not open")
             return None
+
         ret, frame = self._cap.read()
+
         if not ret:
-            return None
+            self._consecutive_failures += 1
+            logger.warning(
+                "RTSPStreamer: read failed (consecutive=%d)", self._consecutive_failures
+            )
+            # Allow up to 30 consecutive failures (~2 s at 15 fps) before giving up
+            if self._consecutive_failures >= 30:
+                logger.error("RTSPStreamer: 30 consecutive failures — closing stream")
+                return None
+            return {}  # empty dict = skip frame, keep trying
+
+        self._consecutive_failures = 0
         run_ocr = (frame_number % self.ocr_interval == 0)
         run_face = (frame_number % self.face_interval == 0)
         return process_rtsp_frame(

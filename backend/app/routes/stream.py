@@ -114,12 +114,13 @@ async def rtsp_stream(ws: WebSocket):
             return
 
         streamer = RTSPStreamer(url=init["url"])
-        opened = await loop.run_in_executor(None, streamer.open)
+        await ws.send_json({"type": "connecting", "message": "Abrindo stream, aguarde…"})
+        opened, err_msg = await loop.run_in_executor(None, streamer.open)
         if not opened:
-            await ws.send_json({"type": "error", "message": f"Não foi possível abrir: {init['url']}"})
+            await ws.send_json({"type": "error", "message": err_msg})
             return
 
-        await ws.send_json({"type": "connected", "message": "Stream aberto."})
+        await ws.send_json({"type": "connected", "message": "Stream aberto com sucesso."})
 
         frame_number = 0
         stop_event = asyncio.Event()
@@ -151,6 +152,11 @@ async def rtsp_stream(ws: WebSocket):
                 break
 
             frame_number += 1
+
+            # Empty dict means consecutive read failure — skip this frame
+            if not result:
+                await asyncio.sleep(0.033)
+                continue
 
             if result.get("faces") is not None:
                 last_rtsp_faces = await _persist_faces(result["faces"], face_cooldown)

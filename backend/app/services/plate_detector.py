@@ -21,6 +21,32 @@ def _normalize_plate(text: str) -> str:
     return cleaned
 
 
+# Termos que DVRs/câmeras gravam como overlay na imagem e que o OCR
+# pode confundir com placa. Comparação é feita após normalização (só A-Z0-9).
+_OCR_BLOCKLIST: set[str] = {
+    # Overlays genéricos de canal
+    "CANAL", "CANAL1", "CANAL2", "CANAL3", "CANAL4",
+    "CANAL5", "CANAL6", "CANAL7", "CANAL8",
+    "CH1", "CH2", "CH3", "CH4", "CH5", "CH6", "CH7", "CH8",
+    "CAM1", "CAM2", "CAM3", "CAM4",
+    "CAMERA1", "CAMERA2", "CAMERA3", "CAMERA4",
+    # Marcas / fabricantes
+    "INTELBRAS", "HIKVISION", "DAHUA", "AXIS", "BOSCH",
+    "HANWHA", "VIVOTEK", "UNIVIEW", "REOLINK", "FOSCAM",
+    # Textos de data/hora e sistema comuns em DVRs
+    "RECORD", "REC", "LIVE", "ALARM", "MOTION",
+    "GRAVANDO", "GRAVACAO", "ENTRADA",
+}
+
+
+def _is_blocklisted(normalized: str) -> bool:
+    """Retorna True se o texto normalizado está na blocklist ou contém um termo dela."""
+    if normalized in _OCR_BLOCKLIST:
+        return True
+    # Também rejeita se o texto começa com um termo da lista (ex: "INTELBRAS1")
+    return any(normalized.startswith(term) for term in _OCR_BLOCKLIST)
+
+
 def _is_valid_plate(text: str) -> bool:
     # Brazilian plate formats: ABC1234 (old) or ABC1D23 (Mercosul)
     old = re.match(r"^[A-Z]{3}\d{4}$", text)
@@ -64,14 +90,17 @@ class PlateDetector:
 
             for (_, text, conf) in ocr_results:
                 normalized = _normalize_plate(text)
-                if len(normalized) >= 5 and conf >= settings.ocr_confidence_threshold:
-                    valid = _is_valid_plate(normalized)
-                    results.append({
-                        "plate_text": normalized,
-                        "confidence": float(conf),
-                        "bbox": (x, y, w, h),
-                        "valid_format": valid,
-                    })
+                if len(normalized) < 5 or conf < settings.ocr_confidence_threshold:
+                    continue
+                if _is_blocklisted(normalized):
+                    continue
+                valid = _is_valid_plate(normalized)
+                results.append({
+                    "plate_text": normalized,
+                    "confidence": float(conf),
+                    "bbox": (x, y, w, h),
+                    "valid_format": valid,
+                })
 
         # Sort by confidence and deduplicate
         results.sort(key=lambda r: r["confidence"], reverse=True)
