@@ -8,10 +8,11 @@
     </div>
 
     <nav class="nav-tabs">
-      <button [class.active]="activeTab === 'upload'" (click)="setTab('upload')">Upload</button>
-      <button [class.active]="activeTab === 'camera'" (click)="setTab('camera')">Câmera ao Vivo</button>
+      <button [class.active]="activeTab === 'upload'"   (click)="setTab('upload')">Upload</button>
+      <button [class.active]="activeTab === 'cameras'"  (click)="setTab('cameras')">Câmeras</button>
+      <button [class.active]="activeTab === 'stream'"   (click)="setTab('stream')">Ao Vivo</button>
       <button [class.active]="activeTab === 'readings'" (click)="setTab('readings')">Leituras</button>
-      <button [class.active]="activeTab === 'faces'" (click)="setTab('faces')">Rostos</button>
+      <button [class.active]="activeTab === 'faces'"    (click)="setTab('faces')">Rostos</button>
     </nav>
   </div>
 </header>
@@ -28,8 +29,20 @@
     </div>
   }
 
-  @if (activeTab === 'camera') {
-    <app-camera></app-camera>
+  @if (activeTab === 'cameras') {
+    <app-camera-list (viewCamera)="onViewCamera($event)"></app-camera-list>
+  }
+
+  @if (activeTab === 'stream') {
+    @if (selectedCameraUrl) {
+      <div class="stream-from-registry">
+        <div class="stream-banner">
+          Visualizando: <strong>{{ selectedCameraLabel }}</strong>
+          <button class="btn-sm btn-secondary" (click)="setTab('cameras')">Voltar ao cadastro</button>
+        </div>
+      </div>
+    }
+    <app-camera [presetRtspUrl]="selectedCameraUrl" [presetRtspLabel]="selectedCameraLabel"></app-camera>
   }
 
   @if (activeTab === 'readings') {

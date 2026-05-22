@@ -1,0 +1,91 @@
+<section class="cl-wrapper">
+  <div class="card">
+    <div class="cl-header">
+      <h2 class="section-title">Câmeras Cadastradas</h2>
+      <button class="btn-primary" (click)="openForm()">+ Nova câmera</button>
+    </div>
+
+    @if (loading) {
+      <p class="hint">Carregando…</p>
+    } @else if (cameras.length === 0) {
+      <p class="hint">Nenhuma câmera cadastrada. Clique em "Nova câmera" para adicionar.</p>
+    } @else {
+      <table class="cam-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Nome</th>
+            <th>URL</th>
+            <th>Descrição</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (cam of cameras; track cam.id) {
+            <tr [class.disabled-row]="!cam.enabled">
+              <td>
+                @if (cam.pinging) {
+                  <span class="badge badge-checking">Verificando…</span>
+                } @else if (cam.online === true) {
+                  <span class="badge badge-online">Online</span>
+                } @else if (cam.online === false) {
+                  <span class="badge badge-offline">Offline</span>
+                } @else {
+                  <span class="badge badge-unknown">—</span>
+                }
+              </td>
+              <td class="td-name">{{ cam.name }}</td>
+              <td class="td-url">
+                <span class="url-text" [title]="cam.url">{{ cam.url }}</span>
+              </td>
+              <td class="td-desc">{{ cam.description ?? '—' }}</td>
+              <td class="td-actions">
+                <button class="btn-action btn-view"
+                  [disabled]="cam.online !== true"
+                  [title]="cam.online !== true ? 'Câmera offline' : 'Ver stream'"
+                  (click)="view(cam)">
+                  Ver
+                </button>
+                <button class="btn-action btn-ping" (click)="ping(cam)" title="Verificar status">
+                  Ping
+                </button>
+                <button class="btn-action btn-edit" (click)="openForm(cam)">Editar</button>
+                <button class="btn-action btn-del"  (click)="delete(cam)">Excluir</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+
+  <!-- Modal de cadastro / edição -->
+  @if (showForm) {
+    <div class="modal-backdrop" (click)="closeForm()">
+      <div class="modal-box" (click)="$event.stopPropagation()">
+        <h3>{{ editingId ? 'Editar câmera' : 'Nova câmera' }}</h3>
+
+        <label>Nome *</label>
+        <input type="text" [(ngModel)]="form.name" placeholder="Ex: Entrada principal">
+
+        <label>URL RTSP *</label>
+        <input type="text" [(ngModel)]="form.url" placeholder="rtsp://usuario:senha@192.168.1.100:554/stream">
+
+        <label>Descrição</label>
+        <input type="text" [(ngModel)]="form.description" placeholder="Opcional">
+
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="form.enabled">
+          Câmera ativa
+        </label>
+
+        <div class="modal-actions">
+          <button class="btn-secondary" (click)="closeForm()">Cancelar</button>
+          <button class="btn-primary" (click)="save()" [disabled]="saving || !form.name.trim() || !form.url.trim()">
+            {{ saving ? 'Salvando…' : 'Salvar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</section>

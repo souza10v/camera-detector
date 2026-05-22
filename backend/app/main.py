@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database.connection import create_tables
-from app.routes import upload, readings, stream, faces
+from app.routes import upload, readings, stream, faces, cameras
 from app.utils.file_utils import ensure_dirs
 
 
@@ -52,6 +52,7 @@ app.include_router(upload.router, prefix="/api/v1")
 app.include_router(readings.router, prefix="/api/v1")
 app.include_router(stream.router, prefix="/api/v1")
 app.include_router(faces.router, prefix="/api/v1")
+app.include_router(cameras.router, prefix="/api/v1")
 
 
 @app.get("/health")

@@ -59,6 +59,27 @@
   .nav-tabs button { padding: 7px 12px; font-size: 13px; }
 }
 
+.stream-from-registry { margin-bottom: 12px; }
+.stream-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #e8f0fe;
+  border-radius: var(--radius);
+  font-size: 14px;
+  color: var(--primary);
+}
+.btn-sm { padding: 5px 14px; font-size: 12px; }
+.btn-secondary {
+  padding: 8px 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 14px;
+}
+
 .app-footer {
   text-align: center;
   padding: 20px 24px;

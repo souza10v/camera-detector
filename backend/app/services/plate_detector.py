@@ -30,8 +30,10 @@ _OCR_BLOCKLIST: set[str] = {
     "CH1", "CH2", "CH3", "CH4", "CH5", "CH6", "CH7", "CH8",
     "CAM1", "CAM2", "CAM3", "CAM4",
     "CAMERA1", "CAMERA2", "CAMERA3", "CAMERA4",
-    # Marcas / fabricantes
-    "INTELBRAS", "HIKVISION", "DAHUA", "AXIS", "BOSCH",
+    # Marcas / fabricantes (incluindo variações por leitura errada do OCR)
+    "INTELBRAS", "INTELBROS", "INTELBRАС", "INTELBRA",
+    "HIKVISION", "HIKVISON", "HIKV",
+    "DAHUA", "AXIS", "BOSCH",
     "HANWHA", "VIVOTEK", "UNIVIEW", "REOLINK", "FOSCAM",
     # Textos de data/hora e sistema comuns em DVRs
     "RECORD", "REC", "LIVE", "ALARM", "MOTION",
@@ -39,11 +41,21 @@ _OCR_BLOCKLIST: set[str] = {
 }
 
 
+# Prefixos de marcas — qualquer texto que CONTENHA esses prefixos é bloqueado
+# (cobre leituras parciais do OCR como "INTELB", "INTELBR", etc.)
+_BRAND_PREFIXES: tuple[str, ...] = (
+    "INTELB", "HIKVIS", "DAHUA", "HANWHA", "VIVOTE", "UNIVIE",
+)
+
+
 def _is_blocklisted(normalized: str) -> bool:
     """Retorna True se o texto normalizado está na blocklist ou contém um termo dela."""
     if normalized in _OCR_BLOCKLIST:
         return True
-    # Também rejeita se o texto começa com um termo da lista (ex: "INTELBRAS1")
+    # Rejeita textos que começam OU contêm prefixos de marcas conhecidas
+    if any(normalized.startswith(p) or p in normalized for p in _BRAND_PREFIXES):
+        return True
+    # Rejeita se começa com qualquer termo da blocklist (ex: "CANAL1EXTRA")
     return any(normalized.startswith(term) for term in _OCR_BLOCKLIST)
 
 

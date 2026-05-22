@@ -47,7 +47,7 @@ _MIGRATIONS = [
 
 async def create_tables():
     async with engine.begin() as conn:
-        from app.models import reading, face  # noqa: F401
+        from app.models import reading, face, camera  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
 
         # Apply incremental column migrations on existing tables

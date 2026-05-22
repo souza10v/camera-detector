@@ -1,5 +1,5 @@
 import {
-  Component, ElementRef, OnDestroy, ViewChild, AfterViewInit
+  Component, ElementRef, OnDestroy, ViewChild, AfterViewInit, Input, OnChanges, SimpleChanges
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -49,10 +49,14 @@ const WS_BASE = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.h
   templateUrl: './camera.component.html',
   styleUrls: ['./camera.component.css'],
 })
-export class CameraComponent implements AfterViewInit, OnDestroy {
+export class CameraComponent implements AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('videoEl')   videoElRef!: ElementRef<HTMLVideoElement>;
   @ViewChild('overlayEl') overlayElRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('captureEl') captureElRef!: ElementRef<HTMLCanvasElement>;
+
+  // Quando uma câmera é selecionada no cadastro, esses inputs são preenchidos
+  @Input() presetRtspUrl: string | null = null;
+  @Input() presetRtspLabel: string | null = null;
 
   mode: Mode = 'webcam';
 
@@ -74,6 +78,27 @@ export class CameraComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopWebcam();
     this.cameras.forEach(c => this.disconnectCamera(c));
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Quando o app seleciona uma câmera do cadastro, muda para RTSP e adiciona automaticamente
+    if (changes['presetRtspUrl'] && this.presetRtspUrl) {
+      this.mode = 'rtsp';
+      // Evita duplicatas — remove câmera com a mesma URL se já existir
+      this.cameras = this.cameras.filter(c => c.url !== this.presetRtspUrl);
+      const cam: RtspCamera = {
+        id: crypto.randomUUID(),
+        url: this.presetRtspUrl,
+        label: this.presetRtspLabel ?? this.presetRtspUrl,
+        status: 'connecting',
+        errorMessage: '',
+        currentFrame: '',
+        lastResult: null,
+        ws: null,
+      };
+      this.cameras.push(cam);
+      this.connectCamera(cam);
+    }
   }
 
   setMode(m: Mode): void {
