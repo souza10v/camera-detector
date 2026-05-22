@@ -17,9 +17,17 @@ from app.utils.file_utils import ensure_dirs
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+    import concurrent.futures
+    # Thread pool maior para processar múltiplas câmeras RTSP em paralelo
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=16, thread_name_prefix="cv")
+    asyncio.get_event_loop().set_default_executor(executor)
+
     ensure_dirs()
     await create_tables()
     yield
+
+    executor.shutdown(wait=False)
 
 
 app = FastAPI(

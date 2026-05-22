@@ -3,109 +3,152 @@
     <h2 class="section-title">Câmera ao Vivo</h2>
 
     <div class="mode-tabs">
-      <button
-        [class.active]="mode === 'webcam'"
-        (click)="setMode('webcam')"
-        [disabled]="status === 'streaming' || status === 'connecting'">
-        Webcam
-      </button>
-      <button
-        [class.active]="mode === 'rtsp'"
-        (click)="setMode('rtsp')"
-        [disabled]="status === 'streaming' || status === 'connecting'">
-        Câmera IP / RTSP
-      </button>
+      <button [class.active]="mode === 'webcam'" (click)="setMode('webcam')">Webcam</button>
+      <button [class.active]="mode === 'rtsp'"   (click)="setMode('rtsp')">Câmeras IP / RTSP</button>
+    </div>
+  </div>
+
+  <!-- ══ WEBCAM ══════════════════════════════════════════════════════════════ -->
+  @if (mode === 'webcam') {
+    <div class="card">
+      <div class="controls">
+        @if (webcamStatus === 'idle' || webcamStatus === 'error') {
+          <button class="btn-primary" (click)="startWebcam()">Iniciar</button>
+        } @else {
+          <button class="btn-danger" (click)="stopWebcam()">Parar</button>
+        }
+        <span class="status-badge" [ngClass]="'status-' + webcamStatus">
+          {{ statusLabel(webcamStatus) }}
+        </span>
+      </div>
+      @if (webcamStatus === 'error' && webcamError) {
+        <div class="alert-error">{{ webcamError }}</div>
+      }
     </div>
 
-    @if (mode === 'rtsp') {
-      <div class="rtsp-input">
+    <div class="video-section">
+      <div class="video-container" [class.active]="webcamStatus === 'streaming'">
+        <video #videoEl autoplay muted playsinline class="live-video"
+          [style.display]="webcamStatus === 'streaming' ? 'block' : 'none'">
+        </video>
+        <canvas #overlayEl class="overlay-canvas"
+          [style.display]="webcamStatus === 'streaming' ? 'block' : 'none'">
+        </canvas>
+        <canvas #captureEl style="display:none"></canvas>
+
+        @if (webcamStatus !== 'streaming') {
+          <div class="placeholder">
+            <p>{{ webcamStatus === 'connecting' ? 'Aguardando câmera…' : 'Clique em Iniciar para começar' }}</p>
+          </div>
+        }
+
+        @if (webcamResult?.plate_text) {
+          <div class="plate-overlay">
+            <span class="plate-chip">{{ webcamResult!.plate_text }}</span>
+            <span class="conf-chip">{{ confidencePercent(webcamResult!.confidence) }}</span>
+          </div>
+        }
+      </div>
+
+      @if (webcamResult) {
+        <div class="stats-bar">
+          <div class="stat">
+            <span class="stat-label">Placa</span>
+            <span class="stat-value plate-font">{{ webcamResult.plate_text ?? '—' }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Confiança</span>
+            <span class="stat-value">{{ confidencePercent(webcamResult.confidence) }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Placas</span>
+            <span class="stat-value">{{ webcamResult.plates_detected }}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Rostos</span>
+            <span class="stat-value">{{ webcamResult.faces.length }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ══ RTSP MULTI-CÂMERA ══════════════════════════════════════════════════ -->
+  @if (mode === 'rtsp') {
+    <div class="card">
+      <div class="add-camera-form">
         <input
           type="text"
           placeholder="rtsp://usuario:senha@192.168.1.100:554/stream"
-          [(ngModel)]="rtspUrl"
-          [disabled]="status !== 'idle' && status !== 'error'"
-          style="width:100%">
+          [(ngModel)]="newUrl"
+          class="url-input"
+          (keyup.enter)="addCamera()">
+        <input
+          type="text"
+          placeholder="Nome da câmera (opcional)"
+          [(ngModel)]="newLabel"
+          class="label-input"
+          (keyup.enter)="addCamera()">
+        <button class="btn-primary" (click)="addCamera()" [disabled]="!newUrl.trim()">
+          Adicionar
+        </button>
+        @if (cameras.length > 1) {
+          <button class="btn-danger btn-sm" (click)="stopAllCameras()">Parar todas</button>
+        }
       </div>
-    }
 
-    <div class="controls">
-      @if (status === 'idle' || status === 'error') {
-        <button class="btn-primary" (click)="start()">Iniciar</button>
-      } @else {
-        <button class="btn-danger" (click)="stop()">Parar</button>
-      }
-      <span class="status-badge" [ngClass]="'status-' + status">
-        {{ {idle: 'Inativo', connecting: 'Conectando…', streaming: 'Transmitindo', error: 'Erro'}[status] }}
-      </span>
-    </div>
-
-    @if (status === 'error' && errorMessage) {
-      <div class="alert-error">{{ errorMessage }}</div>
-    }
-  </div>
-
-  <div class="video-section">
-    <div class="video-container" [class.active]="status === 'streaming'">
-
-      @if (mode === 'webcam') {
-        <!-- Native video — zero latency, browser renders directly -->
-        <video #videoEl autoplay muted playsinline class="live-video"
-          [style.display]="status === 'streaming' ? 'block' : 'none'">
-        </video>
-        <!-- Annotation overlay drawn by canvas API -->
-        <canvas #overlayEl class="overlay-canvas"
-          [style.display]="status === 'streaming' ? 'block' : 'none'">
-        </canvas>
-        <!-- Hidden capture canvas — used only to grab frames to send to backend -->
-        <canvas #captureEl style="display:none"></canvas>
-      } @else {
-        <!-- RTSP: frame comes from backend as JPEG -->
-        <canvas #overlayEl style="display:none"></canvas>
-        <canvas #captureEl style="display:none"></canvas>
-        <video #videoEl style="display:none"></video>
-      }
-
-      @if (mode === 'rtsp' && currentRtspFrame) {
-        <img [src]="currentRtspFrame" class="live-frame" alt="Frame ao vivo">
-      }
-
-      @if (status !== 'streaming') {
-        <div class="placeholder">
-          <p>{{ status === 'connecting' ? 'Aguardando stream…' : 'Clique em Iniciar para começar' }}</p>
-        </div>
-      }
-
-      @if (lastResult?.plate_text) {
-        <div class="plate-overlay">
-          <span class="plate-chip">{{ lastResult!.plate_text }}</span>
-          <span class="conf-chip">{{ confidencePercent(lastResult!.confidence) }}</span>
-        </div>
+      @if (cameras.length === 0) {
+        <p class="empty-hint">Adicione uma URL RTSP acima para começar a monitorar.</p>
       }
     </div>
 
-    @if (lastResult) {
-      <div class="stats-bar">
-        <div class="stat">
-          <span class="stat-label">Placa</span>
-          <span class="stat-value plate-font">{{ lastResult.plate_text ?? '—' }}</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Confiança</span>
-          <span class="stat-value">{{ confidencePercent(lastResult.confidence) }}</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Placas detectadas</span>
-          <span class="stat-value">{{ lastResult.plates_detected }}</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Rostos detectados</span>
-          <span class="stat-value">{{ lastResult.faces.length }}</span>
-        </div>
-        <div class="stat">
-          <span class="stat-label">Identificados</span>
-          <span class="stat-value">{{ countIdentified(lastResult.faces) }}</span>
-        </div>
+    <!-- Grid de câmeras -->
+    @if (cameras.length > 0) {
+      <div class="camera-grid" [class.grid-2]="cameras.length >= 2" [class.grid-3]="cameras.length >= 3">
+        @for (cam of cameras; track cam.id) {
+          <div class="cam-cell">
+            <!-- Header da câmera -->
+            <div class="cam-header">
+              <span class="cam-label">{{ cam.label }}</span>
+              <div class="cam-actions">
+                <span class="status-badge" [ngClass]="'status-' + cam.status">
+                  {{ statusLabel(cam.status) }}
+                </span>
+                @if (cam.status === 'error') {
+                  <button class="btn-icon" title="Reconectar" (click)="reconnectCamera(cam)">↺</button>
+                }
+                <button class="btn-icon btn-icon-danger" title="Remover" (click)="removeCamera(cam)">✕</button>
+              </div>
+            </div>
+
+            <!-- Frame da câmera -->
+            <div class="cam-frame" [class.active]="cam.status === 'streaming'">
+              @if (cam.currentFrame) {
+                <img [src]="cam.currentFrame" class="live-frame" alt="Frame">
+                @if (cam.lastResult?.plate_text) {
+                  <div class="plate-overlay">
+                    <span class="plate-chip">{{ cam.lastResult!.plate_text }}</span>
+                    <span class="conf-chip">{{ confidencePercent(cam.lastResult!.confidence) }}</span>
+                  </div>
+                }
+              } @else {
+                <div class="placeholder">
+                  <p>{{ cam.status === 'connecting' ? 'Conectando…' : cam.status === 'error' ? cam.errorMessage : 'Aguardando stream…' }}</p>
+                </div>
+              }
+            </div>
+
+            <!-- Stats mini da câmera -->
+            @if (cam.lastResult) {
+              <div class="cam-stats">
+                <span>Placa: <strong class="plate-font">{{ cam.lastResult.plate_text ?? '—' }}</strong></span>
+                <span>Rostos: <strong>{{ cam.lastResult.faces.length }}</strong></span>
+                <span>ID: <strong>{{ countIdentified(cam.lastResult.faces) }}</strong></span>
+              </div>
+            }
+          </div>
+        }
       </div>
     }
-  </div>
+  }
 </section>
