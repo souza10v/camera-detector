@@ -37,6 +37,11 @@ _MIGRATIONS = [
     ALTER TABLE face_detections
         ALTER COLUMN reading_id DROP NOT NULL
     """,
+    # Permite file_type = 'stream' (antes só aceitava 'image' | 'video')
+    """
+    ALTER TABLE plate_readings
+        ALTER COLUMN file_type TYPE VARCHAR(20)
+    """,
 ]
 
 

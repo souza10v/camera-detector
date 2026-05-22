@@ -94,3 +94,27 @@ async def search_by_plate(
 
 async def get_reading_by_id(db: AsyncSession, reading_id: int) -> PlateReading | None:
     return await db.get(PlateReading, reading_id)
+
+
+async def create_stream_reading(
+    db: AsyncSession,
+    plate_text: str,
+    confidence: float,
+    plates_detected: int,
+    faces_detected: int,
+    source: str = "stream",   # "webcam" | "rtsp"
+) -> PlateReading:
+    """Cria um registro de leitura originado de stream ao vivo (sem arquivo de upload)."""
+    reading = PlateReading(
+        original_filename=f"[{source}]",
+        file_type="stream",
+        plate_text=plate_text,
+        confidence=confidence,
+        plates_detected=plates_detected,
+        faces_detected=faces_detected,
+        status=ProcessingStatus.completed,
+    )
+    db.add(reading)
+    await db.commit()
+    await db.refresh(reading)
+    return reading

@@ -4,6 +4,7 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.database.connection import AsyncSessionLocal
 from app.services.face_db_service import load_face_cache, find_or_create_unique_face, create_face_detection
+from app.services.reading_service import create_stream_reading
 from app.services.stream_processor import decode_frame, process_webcam_frame, RTSPStreamer
 
 router = APIRouter(prefix="/ws", tags=["stream"])
@@ -11,7 +12,8 @@ router = APIRouter(prefix="/ws", tags=["stream"])
 WEBCAM_OCR_INTERVAL = 8
 WEBCAM_FACE_INTERVAL = 15
 CACHE_REFRESH_SECONDS = 60
-FACE_SAVE_COOLDOWN = 30  # seconds between saves of the same unique face
+FACE_SAVE_COOLDOWN = 30   # segundos entre saves do mesmo rosto único
+PLATE_SAVE_COOLDOWN = 30  # segundos entre saves da mesma placa
 
 
 async def _refresh_cache() -> list[dict]:
@@ -19,8 +21,42 @@ async def _refresh_cache() -> list[dict]:
         return await load_face_cache(db)
 
 
-async def _persist_faces(faces: list[dict], cooldown: dict[int, float]) -> list[dict]:
-    """Save detected faces to DB. Returns the same list stripped of embedding/crop_path."""
+async def _persist_plate(
+    result: dict,
+    cooldown: dict[str, float],
+    source: str,
+) -> int | None:
+    """Salva a placa detectada no banco com cooldown por texto de placa.
+    Retorna o reading_id criado (ou None se não salvou)."""
+    plate_text = result.get("plate_text")
+    if not plate_text:
+        return None
+
+    now = time.monotonic()
+    last_saved = cooldown.get(plate_text)
+    if last_saved is not None and now - last_saved < PLATE_SAVE_COOLDOWN:
+        return None  # ainda no cooldown — não duplica
+
+    async with AsyncSessionLocal() as db:
+        reading = await create_stream_reading(
+            db,
+            plate_text=plate_text,
+            confidence=result.get("confidence") or 0.0,
+            plates_detected=result.get("plates_detected", 1),
+            faces_detected=0,   # atualizado depois de persistir os rostos
+            source=source,
+        )
+    cooldown[plate_text] = now
+    return reading.id
+
+
+async def _persist_faces(
+    faces: list[dict],
+    face_cooldown: dict[int, float],
+    reading_id: int | None = None,
+) -> list[dict]:
+    """Salva rostos detectados no banco.
+    Vincula ao reading_id quando fornecido (mesma leitura que gerou a placa)."""
     now = time.monotonic()
     to_save = [f for f in faces if f.get("embedding") and f.get("crop_path")]
     if to_save:
@@ -29,18 +65,16 @@ async def _persist_faces(faces: list[dict], cooldown: dict[int, float]) -> list[
                 unique_face = await find_or_create_unique_face(
                     db, face["embedding"], face["crop_path"]
                 )
-                last_saved = cooldown.get(unique_face.id)
+                last_saved = face_cooldown.get(unique_face.id)
                 if last_saved is None or now - last_saved > FACE_SAVE_COOLDOWN:
                     await create_face_detection(
                         db, unique_face.id, face["crop_path"],
-                        reading_id=None, source="stream",
+                        reading_id=reading_id, source="stream",
                     )
-                    cooldown[unique_face.id] = now
-                    # Update cache with newly created face so it's recognized next interval
+                    face_cooldown[unique_face.id] = now
                     face["face_id"] = unique_face.id
                     face["label"] = f"Pessoa #{unique_face.id}"
 
-    # Strip internal fields before returning to caller (not sent to browser)
     return [
         {"bbox": f["bbox"], "face_id": f["face_id"], "label": f["label"]}
         for f in faces
@@ -55,6 +89,7 @@ async def webcam_stream(ws: WebSocket):
     last_refresh = time.monotonic()
     last_faces: list[dict] = []
     face_cooldown: dict[int, float] = {}
+    plate_cooldown: dict[str, float] = {}
     frame_number = 0
     loop = asyncio.get_event_loop()
 
@@ -79,9 +114,13 @@ async def webcam_stream(ws: WebSocket):
                 face_cache if run_face else None,
             )
 
+            # Persiste placa (com cooldown) e obtém reading_id para vincular rostos
+            reading_id = await _persist_plate(result, plate_cooldown, source="webcam")
+
             if result["faces"] is not None:
-                # Persist to DB and strip internal fields
-                last_faces = await _persist_faces(result["faces"], face_cooldown)
+                last_faces = await _persist_faces(
+                    result["faces"], face_cooldown, reading_id=reading_id
+                )
 
             result["faces"] = last_faces
             await ws.send_json({"type": "result", **result})
@@ -102,6 +141,7 @@ async def rtsp_stream(ws: WebSocket):
     face_cache = await _refresh_cache()
     last_refresh = time.monotonic()
     face_cooldown: dict[int, float] = {}
+    plate_cooldown: dict[str, float] = {}
     streamer: RTSPStreamer | None = None
     loop = asyncio.get_event_loop()
 
@@ -153,13 +193,18 @@ async def rtsp_stream(ws: WebSocket):
 
             frame_number += 1
 
-            # Empty dict means consecutive read failure — skip this frame
+            # Empty dict = leitura falhou temporariamente — aguarda e tenta de novo
             if not result:
                 await asyncio.sleep(0.033)
                 continue
 
+            # Persiste placa (com cooldown) e obtém reading_id para vincular rostos
+            reading_id = await _persist_plate(result, plate_cooldown, source="rtsp")
+
             if result.get("faces") is not None:
-                last_rtsp_faces = await _persist_faces(result["faces"], face_cooldown)
+                last_rtsp_faces = await _persist_faces(
+                    result["faces"], face_cooldown, reading_id=reading_id
+                )
             result["faces"] = last_rtsp_faces
 
             await ws.send_json({"type": "result", **result})
