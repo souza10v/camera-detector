@@ -50,7 +50,10 @@
     <div class="modal-content" (click)="$event.stopPropagation()">
       <div class="modal-header">
         <h3>Pessoa #{{ selected?.id }}</h3>
-        <button class="btn-secondary" (click)="closeDetail()">Fechar</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-danger btn-sm" (click)="deleteFace(selected!.id)">Remover</button>
+          <button class="btn-secondary" (click)="closeDetail()">Fechar</button>
+        </div>
       </div>
 
       @if (loadingDetail) {

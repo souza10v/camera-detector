@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 from app.database.connection import get_db
 from app.services import face_db_service
 from app.schemas.face import UniqueFaceList, UniqueFaceDetail, UniqueFaceResponse, FaceDetectionResponse
+from app.models.face import UniqueFace, FaceDetection
 
 router = APIRouter(prefix="/faces", tags=["faces"])
 
@@ -30,3 +32,15 @@ async def get_face(face_id: int, db: AsyncSession = Depends(get_db)):
         **UniqueFaceResponse.model_validate(face).model_dump(),
         detections=[FaceDetectionResponse.model_validate(d) for d in detections],
     )
+
+
+@router.delete("/{face_id}", status_code=204)
+async def delete_face(face_id: int, db: AsyncSession = Depends(get_db)):
+    """Remove um rosto único e todas as suas detecções (útil para falsos positivos)."""
+    face = await db.get(UniqueFace, face_id)
+    if not face:
+        raise HTTPException(status_code=404, detail="Rosto não encontrado")
+    # Remove detecções primeiro (FK)
+    await db.execute(delete(FaceDetection).where(FaceDetection.unique_face_id == face_id))
+    await db.delete(face)
+    await db.commit()

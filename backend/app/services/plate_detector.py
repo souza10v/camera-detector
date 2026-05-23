@@ -73,57 +73,121 @@ class PlateDetector:
             cv2.data.haarcascades + "haarcascade_russian_plate_number.xml"
         )
 
-    def _preprocess_roi(self, roi: np.ndarray) -> np.ndarray:
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        gray = cv2.bilateralFilter(gray, 11, 17, 17)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        return thresh
+    # Caracteres permitidos em placas brasileiras (allowlist melhora velocidade e precisão do OCR)
+    _PLATE_ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+    def _preprocess_roi(self, roi: np.ndarray) -> list[np.ndarray]:
+        """Retorna múltiplas versões pré-processadas do ROI para maximizar detecção.
+
+        Para ROIs pequenos (região de placa detectada), aplica upscale 2×.
+        Para imagens grandes (frame completo), redimensiona para no máximo 720p
+        para evitar travar o OCR.
+        """
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if len(roi.shape) == 3 else roi.copy()
+        h, w = gray.shape[:2]
+
+        if h < 80 or w < 160:
+            # ROI pequeno (placa detectada por cascade) — escala 2× para melhorar leitura
+            gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        elif max(h, w) > 800:
+            # Frame grande — limita dimensão máxima a 800 px para controlar memória do OCR.
+            # 4 workers × EasyOCR em imagens muito grandes → OOM no container.
+            # Placa de ~80px em 960px → ~67px em 800px: ainda legível com allowlist.
+            scale = 800.0 / max(h, w)
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+        # Versão 1: filtro bilateral + threshold Otsu (boa para alto contraste)
+        bilateral = cv2.bilateralFilter(gray, 11, 17, 17)
+        _, otsu = cv2.threshold(bilateral, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Versão 2: Otsu invertido (letras escuras em fundo claro)
+        _, otsu_inv = cv2.threshold(bilateral, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+        # Versão 3: threshold adaptativo (melhor para iluminação irregular)
+        adaptive = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 8
+        )
+
+        # Versão 4: CLAHE (melhora contraste em cenas escuras ou super-expostas)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+
+        return [otsu, otsu_inv, adaptive, enhanced]
+
+    def _ocr_roi(self, reader: easyocr.Reader, processed: np.ndarray) -> list[tuple]:
+        """Executa OCR num ROI pré-processado com allowlist de placa."""
+        return reader.readtext(
+            processed,
+            detail=1,
+            allowlist=self._PLATE_ALLOWLIST,
+            # Dicas de parágrafo: placas são texto horizontal em uma linha
+            paragraph=False,
+            width_ths=0.5,
+        )
 
     def detect_plates(self, image: np.ndarray) -> list[dict]:
         reader = get_ocr_reader()
-        results = []
+        results: list[dict] = []
+        seen: set[str] = set()
 
-        # Strategy 1: Haar cascade detects plate regions
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        plates = self._plate_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+        # ── Estratégia 1: Haar cascade para regiões de placa ──────────────────
+        gray_full = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        cascade_hits = self._plate_cascade.detectMultiScale(
+            gray_full, scaleFactor=1.1, minNeighbors=5, minSize=(60, 20)
+        )
 
-        rois = []
-        for (x, y, w, h) in plates:
-            rois.append((x, y, w, h, image[y:y+h, x:x+w]))
+        rois: list[tuple[int, int, int, int, np.ndarray]] = []
+        for (x, y, w, h) in cascade_hits:
+            # Expande ligeiramente a ROI para não cortar bordas
+            pad_x, pad_y = int(w * 0.05), int(h * 0.1)
+            x1 = max(0, x - pad_x)
+            y1 = max(0, y - pad_y)
+            x2 = min(image.shape[1], x + w + pad_x)
+            y2 = min(image.shape[0], y + h + pad_y)
+            rois.append((x1, y1, x2 - x1, y2 - y1, image[y1:y2, x1:x2]))
 
-        # Strategy 2: run OCR on the full image if no ROIs found
-        if not rois:
+        # ── Estratégia 2: frame completo como fallback ─────────────────────────
+        full_image_fallback = not rois
+        if full_image_fallback:
             rois = [(0, 0, image.shape[1], image.shape[0], image)]
 
         for (x, y, w, h, roi) in rois:
-            processed = self._preprocess_roi(roi)
-            ocr_results = reader.readtext(processed, detail=1)
+            versions = self._preprocess_roi(roi)
 
-            for (_, text, conf) in ocr_results:
-                normalized = _normalize_plate(text)
-                if len(normalized) < 5 or conf < settings.ocr_confidence_threshold:
-                    continue
-                if _is_blocklisted(normalized):
-                    continue
-                valid = _is_valid_plate(normalized)
-                results.append({
-                    "plate_text": normalized,
-                    "confidence": float(conf),
-                    "bbox": (x, y, w, h),
-                    "valid_format": valid,
-                })
+            # No fallback de imagem completa, tentamos as versões em ordem mas
+            # paramos ao encontrar a primeira placa válida (desempenho no stream)
+            for processed in versions:
+                for (_, text, conf) in self._ocr_roi(reader, processed):
+                    normalized = _normalize_plate(text)
 
-        # Sort by confidence and deduplicate
+                    # Requer exatamente 7 chars (formato de placa brasileiro)
+                    if len(normalized) != 7:
+                        continue
+                    if conf < settings.ocr_confidence_threshold:
+                        continue
+                    if _is_blocklisted(normalized):
+                        continue
+                    if not _is_valid_plate(normalized):
+                        continue
+                    if normalized in seen:
+                        continue
+
+                    seen.add(normalized)
+                    results.append({
+                        "plate_text": normalized,
+                        "confidence": float(conf),
+                        "bbox": (x, y, w, h),
+                        "valid_format": True,
+                    })
+
+                # Sai do loop de versões assim que encontrar pelo menos uma placa válida
+                # (evita múltiplas chamadas OCR desnecessárias no fallback de frame completo)
+                if results:
+                    break
+
+        # Ordena por confiança (melhor primeiro)
         results.sort(key=lambda r: r["confidence"], reverse=True)
-        seen = set()
-        unique = []
-        for r in results:
-            if r["plate_text"] not in seen:
-                seen.add(r["plate_text"])
-                unique.append(r)
-
-        return unique
+        return results
 
     def annotate_image(self, image: np.ndarray, plates: list[dict]) -> np.ndarray:
         annotated = image.copy()

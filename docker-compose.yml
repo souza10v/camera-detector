@@ -34,7 +34,7 @@ services:
       UPLOAD_DIR: /app/uploads
       PROCESSED_DIR: /app/uploads/processed
       MAX_FILE_SIZE_MB: "50"
-      OCR_CONFIDENCE_THRESHOLD: "0.5"
+      OCR_CONFIDENCE_THRESHOLD: "0.35"
       YOLO_CONFIDENCE_THRESHOLD: "0.5"
       CORS_ORIGINS: http://localhost:4200,http://localhost:80,http://frontend
     volumes:
@@ -62,7 +62,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       UPLOAD_DIR: /app/uploads
       PROCESSED_DIR: /app/uploads/processed
-      OCR_CONFIDENCE_THRESHOLD: "0.5"
+      OCR_CONFIDENCE_THRESHOLD: "0.35"
       FACE_RECOGNITION_THRESHOLD: "0.55"
     volumes:
       - uploads_data:/app/uploads

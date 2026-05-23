@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import base64
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from app.services.plate_detector import plate_detector
 from app.services.face_recognition_service import (
     detect_and_encode_faces, find_best_match, save_face_crop_stream
@@ -17,7 +19,7 @@ def decode_frame(b64: str) -> np.ndarray:
     return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 
-def encode_frame(frame: np.ndarray, quality: int = 75) -> str:
+def encode_frame(frame: np.ndarray, quality: int = 80) -> str:
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
     return base64.b64encode(buf).decode()
 
@@ -77,11 +79,16 @@ def _draw_faces(frame: np.ndarray, faces: list[dict]) -> np.ndarray:
 
 def process_rtsp_frame(
     frame: np.ndarray,
-    run_ocr: bool = True,
+    plates_override: list[dict] | None = None,
     face_cache: list[dict] | None = None,
 ) -> dict:
-    """Encodes frame with plate + face annotations. No blur."""
-    plates = plate_detector.detect_plates(frame) if run_ocr else []
+    """Codifica o frame com anotações de placa e rosto.
+
+    plates_override: resultado de OCR externo (background thread).
+                     Se None, não anota placas neste frame.
+    face_cache: cache de rostos para reconhecimento. None = pular face recognition.
+    """
+    plates = plates_override if plates_override is not None else []
     annotated = plate_detector.annotate_image(frame, plates)
 
     faces = []
@@ -104,12 +111,20 @@ def process_rtsp_frame(
 
 
 class RTSPStreamer:
-    def __init__(self, url: str, ocr_interval: int = 10, face_interval: int = 20):
+    def __init__(self, url: str, ocr_interval: int = 15, face_interval: int = 30):
         self.url = url
         self.ocr_interval = ocr_interval
         self.face_interval = face_interval
         self._cap: cv2.VideoCapture | None = None
         self._consecutive_failures = 0
+
+        # ── OCR em background ───────────────────────────────────────────────
+        # O OCR pode levar vários segundos por frame — rodamos em um thread
+        # dedicado para não bloquear o loop de leitura do stream.
+        self._ocr_lock = threading.Lock()
+        self._ocr_busy = False
+        self._last_plates: list[dict] = []
+        self._ocr_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rtsp_ocr")
 
     @staticmethod
     def _check_tcp(host: str, port: int, timeout: float = 5.0) -> bool:
@@ -203,6 +218,24 @@ class RTSPStreamer:
 
         return True, ""
 
+    def _ocr_worker(self, frame: np.ndarray) -> None:
+        """Roda detect_plates em background e atualiza _last_plates ao concluir."""
+        try:
+            plates = plate_detector.detect_plates(frame)
+            with self._ocr_lock:
+                self._last_plates = plates
+            if plates:
+                logger.info(
+                    "RTSPStreamer: OCR detectou %d placa(s): %s",
+                    len(plates),
+                    [p["plate_text"] for p in plates],
+                )
+        except Exception as exc:
+            logger.warning("RTSPStreamer: OCR error: %s", exc)
+        finally:
+            with self._ocr_lock:
+                self._ocr_busy = False
+
     def read_and_process(self, frame_number: int, face_cache: list[dict]) -> dict | None:
         if self._cap is None or not self._cap.isOpened():
             logger.error("RTSPStreamer: capture is not open")
@@ -222,11 +255,28 @@ class RTSPStreamer:
             return {}  # empty dict = skip frame, keep trying
 
         self._consecutive_failures = 0
-        run_ocr = (frame_number % self.ocr_interval == 0)
-        run_face = (frame_number % self.face_interval == 0)
+
+        # ── Dispara OCR em background (sem bloquear o loop de stream) ─────────
+        # OCR só é disparado quando não há OCR em andamento e chegou o intervalo.
+        should_run_ocr = (frame_number % self.ocr_interval == 0)
+        if should_run_ocr:
+            with self._ocr_lock:
+                if not self._ocr_busy:
+                    self._ocr_busy = True
+                    self._ocr_executor.submit(self._ocr_worker, frame.copy())
+
+        # Usa o último resultado de OCR disponível (pode ser de frames anteriores)
+        with self._ocr_lock:
+            plates = list(self._last_plates)
+
+        # Face recognition: escalonado meio intervalo após OCR para nunca coincidir
+        # (OCR em background + face em foreground ao mesmo tempo → pico de memória).
+        # Com ocr_interval=15 e face_interval=30: OCR em 0,15,30... face em 7,37,67...
+        face_offset = self.ocr_interval // 2
+        run_face = ((frame_number + face_offset) % self.face_interval == 0)
         return process_rtsp_frame(
             frame,
-            run_ocr=run_ocr,
+            plates_override=plates,
             face_cache=face_cache if run_face else None,
         )
 
@@ -234,3 +284,4 @@ class RTSPStreamer:
         if self._cap:
             self._cap.release()
             self._cap = None
+        self._ocr_executor.shutdown(wait=False, cancel_futures=True)

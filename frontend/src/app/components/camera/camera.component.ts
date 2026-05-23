@@ -163,7 +163,7 @@ export class CameraComponent implements AfterViewInit, OnDestroy, OnChanges {
     capture.width  = video.videoWidth  || 640;
     capture.height = video.videoHeight || 480;
     capture.getContext('2d')!.drawImage(video, 0, 0);
-    const b64 = capture.toDataURL('image/jpeg', 0.5).split(',')[1];
+    const b64 = capture.toDataURL('image/jpeg', 0.8).split(',')[1];
     this.webcamWs.send(JSON.stringify({ type: 'frame', data: b64 }));
   }
 

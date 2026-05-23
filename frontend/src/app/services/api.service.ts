@@ -35,6 +35,10 @@ export class ApiService {
     return this.http.get<UniqueFaceDetail>(`${API_BASE}/faces/${faceId}`);
   }
 
+  deleteFace(faceId: number): Observable<void> {
+    return this.http.delete<void>(`${API_BASE}/faces/${faceId}`);
+  }
+
   getImageUrl(path: string): string {
     return path.startsWith('/images') ? path : `/images/${path}`;
   }

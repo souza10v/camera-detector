@@ -10,6 +10,13 @@ from datetime import datetime, timezone
 from app.worker import celery_app
 from app.config import settings
 
+# ── Importa TODOS os models aqui para garantir que o metadata do SQLAlchemy ──
+# esteja completo antes do primeiro uso de sessão. Sem isso, FK entre tabelas
+# pode falhar ao ser resolvida (ex: face_detections.reading_id → plate_readings).
+from app.models.camera import Camera          # noqa: F401
+from app.models.reading import PlateReading, ProcessingStatus  # noqa: F401
+from app.models.face import UniqueFace, FaceDetection  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 FACE_CACHE_TTL   = 60    # segundos entre recarregamentos do cache de faces
@@ -19,19 +26,20 @@ STOP_CHECK_EVERY = 50    # frames entre verificações de "câmera ainda ativa?"
 
 
 # ── Helpers síncronos (não podem usar async/await) ───────────────────────────
+# Todos os models são importados no topo do módulo — não repetir aqui.
+
+from sqlalchemy import select
+from app.services.face_recognition_service import find_best_match
+from app.database.sync_connection import SyncSessionLocal
+from app.services.stream_processor import RTSPStreamer
+
 
 def _load_face_cache_sync(db) -> list[dict]:
-    from app.models.face import UniqueFace
-    from sqlalchemy import select
     rows = db.execute(select(UniqueFace.id, UniqueFace.embedding)).all()
     return [{"id": r.id, "embedding": json.loads(r.embedding)} for r in rows]
 
 
 def _find_or_create_face_sync(db, embedding: list, crop_path: str | None):
-    from app.models.face import UniqueFace
-    from app.services.face_recognition_service import find_best_match
-    from sqlalchemy import select
-
     rows = db.execute(select(UniqueFace)).scalars().all()
     candidates = [{"id": f.id, "embedding": json.loads(f.embedding)} for f in rows]
     best, dist = find_best_match(embedding, candidates)
@@ -55,7 +63,6 @@ def _find_or_create_face_sync(db, embedding: list, crop_path: str | None):
 
 
 def _save_plate_sync(db, result: dict, source_label: str):
-    from app.models.reading import PlateReading, ProcessingStatus
     reading = PlateReading(
         original_filename=f"[worker:{source_label}]",
         file_type="stream",
@@ -72,7 +79,6 @@ def _save_plate_sync(db, result: dict, source_label: str):
 
 
 def _save_face_sync(db, unique_face, crop_path, reading_id, source_label):
-    from app.models.face import FaceDetection
     det = FaceDetection(
         reading_id=reading_id,
         unique_face_id=unique_face.id,
@@ -88,10 +94,6 @@ def _save_face_sync(db, unique_face, crop_path, reading_id, source_label):
 @celery_app.task(bind=True, name="tasks.process_camera", max_retries=3)
 def process_camera(self, camera_id: int):
     """Processa uma câmera RTSP em loop até ser revogada ou câmera desabilitada."""
-    from app.database.sync_connection import SyncSessionLocal
-    from app.models.camera import Camera
-    from app.services.stream_processor import RTSPStreamer
-
     logger.info("[worker] camera_id=%d  task_id=%s  iniciando", camera_id, self.request.id)
 
     # ── Carrega dados da câmera ──────────────────────────────────────────────

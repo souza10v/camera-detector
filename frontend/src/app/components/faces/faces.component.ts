@@ -61,6 +61,17 @@ export class FacesComponent implements OnInit, OnChanges {
 
   closeDetail(): void { this.selected = null; }
 
+  deleteFace(id: number): void {
+    if (!confirm(`Remover Pessoa #${id} e todas as suas capturas?`)) return;
+    this.api.deleteFace(id).subscribe({
+      next: () => {
+        this.selected = null;
+        this.load();
+      },
+      error: () => alert('Erro ao remover rosto.'),
+    });
+  }
+
   prevPage(): void {
     if (this.currentPage > 0) { this.currentPage--; this.load(); }
   }

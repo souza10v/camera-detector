@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 50
     allowed_image_types: str = "image/jpeg,image/png,image/webp"
     allowed_video_types: str = "video/mp4,video/avi,video/mov"
-    ocr_confidence_threshold: float = 0.5
+    ocr_confidence_threshold: float = 0.35
     face_recognition_threshold: float = 0.55
     yolo_confidence_threshold: float = 0.5
     cors_origins: str = "http://localhost:4200"
